@@ -4,7 +4,7 @@ name: 编译 Windows x64 资源包 (标签触发)
 on:
   push:
     tags:
-      - 'v*'  # 仅标签触发（如 v1.0.0）
+      - 'v*'
 
 jobs:
   compile-windows-x64:
@@ -13,7 +13,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12"]  # 仅保留版本矩阵，移除静态 artifact-name
+        # 降级到 GitHub Actions 稳定支持的 Python 3.10
+        python-version: ["3.10"]
     
     steps:
       - name: 检出代码
@@ -21,11 +22,9 @@ jobs:
         with:
           fetch-depth: 0
 
-      # 动态生成 artifact-name（核心修正：移到步骤内）
       - name: 计算产物名称
         id: artifact_name
         run: |
-          # 生成如 sites.cp311-win_amd64.pyd 的名称
           $py_ver = "${{ matrix.python-version }}".Replace(".", "")
           $artifact_name = "sites.cp$py_ver-win_amd64.pyd"
           echo "ARTIFACT_NAME=$artifact_name" >> $env:GITHUB_ENV
@@ -34,7 +33,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          architecture: amd64  # 明确 x64 架构
+          architecture: amd64
 
       - name: 安装编译依赖
         run: |
@@ -42,10 +41,9 @@ jobs:
           echo "C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8
           python -m pip install --upgrade pip setuptools wheel cython
 
-      - name: 编译扩展模块
+      - name: 编译扩展模块（示例，需替换为真实命令）
         run: |
           mkdir -p build/app/helper
-          # 替换为真实编译命令（示例为模拟）
           echo "模拟编译产物: ${{ env.ARTIFACT_NAME }}" > build/app/helper/${{ env.ARTIFACT_NAME }}
 
       - name: 验证产物
