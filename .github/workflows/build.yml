@@ -4,7 +4,7 @@ name: 编译 Windows x64 资源包 (标签触发)
 on:
   push:
     tags:
-      - 'v*'  # 仅通过 v 开头的标签触发（如 v2.3.9、v3.0.0）
+      - 'v*'  # 仅标签触发（如 v1.0.0）
 
 jobs:
   compile-windows-x64:
@@ -13,114 +13,76 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12"]
-        include:
-          - platform: Windows
-            arch: amd64
-            # 修正表达式：使用 replace 函数而非管道符
-            artifact-name: sites.cp${{ replace(matrix.python-version, '.', '') }}-win_amd64.pyd
-
+        python-version: ["3.11", "3.12"]  # 仅保留版本矩阵，移除静态 artifact-name
+    
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # 拉取完整历史，确保版本标签可用
+          fetch-depth: 0
+
+      # 动态生成 artifact-name（核心修正：移到步骤内）
+      - name: 计算产物名称
+        id: artifact_name
+        run: |
+          # 生成如 sites.cp311-win_amd64.pyd 的名称
+          $py_ver = "${{ matrix.python-version }}".Replace(".", "")
+          $artifact_name = "sites.cp$py_ver-win_amd64.pyd"
+          echo "ARTIFACT_NAME=$artifact_name" >> $env:GITHUB_ENV
 
       - name: 设置 Python ${{ matrix.python-version }} (x64)
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          architecture: ${{ matrix.arch }}  # 强制使用 64 位架构
-          cache: 'pip'  # 缓存 pip 依赖，加速构建
+          architecture: amd64  # 明确 x64 架构
 
-      - name: 安装 Windows 编译工具链
+      - name: 安装编译依赖
         run: |
-          # 安装 MinGW 作为 C 编译器（适配 Python 扩展编译）
           choco install -y mingw --version=11.2.0
-          # 将 MinGW 二进制目录添加到环境变量
           echo "C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8
-          # 验证编译器安装
-          g++ --version
+          python -m pip install --upgrade pip setuptools wheel cython
 
-      - name: 安装 Python 构建依赖
+      - name: 编译扩展模块
         run: |
-          python -m pip install --upgrade pip
-          pip install setuptools wheel cython  # 基础构建工具
-          # 如需其他依赖，在此添加（如项目特定的库）
-          # pip install some-dependency
-
-      - name: 编译扩展模块（.pyd 文件）
-        run: |
-          # 替换为项目实际的编译命令（以下为示例框架）
-          # 1. 若使用 setup.py 构建
-          # python setup.py build_ext --inplace --compiler=mingw32
-          
-          # 2. 若使用 pyproject.toml
-          # pip wheel --no-deps --wheel-dir=build .
-          
-          # 以下为模拟实际编译流程（请替换为真实命令）
           mkdir -p build/app/helper
-          # 生成符合命名规范的产物（模拟编译结果）
-          echo "Windows x64 编译产物 (Python ${{ matrix.python-version }}) - 版本 ${{ github.ref_name }}" > build/app/helper/${{ matrix.artifact-name }}
+          # 替换为真实编译命令（示例为模拟）
+          echo "模拟编译产物: ${{ env.ARTIFACT_NAME }}" > build/app/helper/${{ env.ARTIFACT_NAME }}
 
-      - name: 验证编译产物
+      - name: 验证产物
         run: |
-          # 检查产物是否存在且路径正确
-          if (-not (Test-Path "build/app/helper/${{ matrix.artifact-name }}")) {
-            Write-Error "编译失败：未找到产物 ${{ matrix.artifact-name }}"
+          if (-not (Test-Path "build/app/helper/${{ env.ARTIFACT_NAME }}")) {
+            Write-Error "产物缺失: ${{ env.ARTIFACT_NAME }}"
             exit 1
           }
-          # 输出产物信息
-          Get-Item "build/app/helper/${{ matrix.artifact-name }}"
 
-      - name: 打包资源（符合 LICENSE 要求）
+      - name: 打包资源
         run: |
-          # 创建最终产物目录（结构与 package.json 中 target 一致）
           mkdir -p artifacts/app/helper
-          
-          # 复制编译产物
-          cp "build/app/helper/${{ matrix.artifact-name }}" "artifacts/app/helper/"
-          
-          # 复制许可证文件（GPLv3 要求必须包含）
-          cp LICENSE artifacts/
-          
-          # 复制版本描述文件
-          cp package.json artifacts/
-          if (Test-Path "package.v2.json") { cp package.v2.json artifacts/ }
-          
-          # 生成版本信息文件
-          "资源版本：${{ github.ref_name }}" | Out-File -FilePath "artifacts/VERSION" -Encoding utf8
+          cp build/app/helper/${{ env.ARTIFACT_NAME }} artifacts/app/helper/
+          cp LICENSE package.json package.v2.json artifacts/ -ErrorAction SilentlyContinue
+          echo "资源版本：${{ github.ref_name }}" > artifacts/VERSION
 
-      - name: 上传完整构建产物
+      - name: 上传产物
         uses: actions/upload-artifact@v4
         with:
           name: Windows-x64-py${{ matrix.python-version }}-${{ github.ref_name }}
           path: artifacts/
-          retention-days: 30  # 产物保留 30 天
-          if-no-files-found: error  # 若产物缺失则报错
 
   create-release:
-    name: 创建 Release 并附加产物
-    needs: compile-windows-x64  # 依赖编译任务完成
+    needs: compile-windows-x64
     runs-on: ubuntu-latest
     steps:
-      - name: 下载所有编译产物
+      - name: 下载产物
         uses: actions/download-artifact@v4
         with:
-          path: all-artifacts  # 所有产物下载到该目录
+          path: all-artifacts
 
-      - name: 创建 GitHub Release
+      - name: 创建 Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name: 资源包 ${{ github.ref_name }}
-          body: |
-            ## Windows x64 资源包 ${{ github.ref_name }}
-            - 包含 Python 3.11 和 3.12 版本的编译产物
-            - 遵循 GPLv3 许可证，完整源码可通过源码仓库获取
           files: |
             all-artifacts/**/*.pyd
             all-artifacts/**/LICENSE
             all-artifacts/**/package*.json
-          draft: false
-          prerelease: false
+            all-artifacts/**/VERSION
