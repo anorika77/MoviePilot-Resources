@@ -13,8 +13,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 降级到 GitHub Actions 稳定支持的 Python 3.10
-        python-version: ["3.10"]
+        # 确认版本清单中存在的稳定版本（如3.10.11）
+        python-version: ["3.10.11"]  # 精确到补丁版，提升匹配成功率
     
     steps:
       - name: 检出代码
@@ -29,11 +29,11 @@ jobs:
           $artifact_name = "sites.cp$py_ver-win_amd64.pyd"
           echo "ARTIFACT_NAME=$artifact_name" >> $env:GITHUB_ENV
 
-      - name: 设置 Python ${{ matrix.python-version }} (x64)
+      - name: 设置 Python（修正架构参数：x64 而非 amd64）
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          architecture: amd64
+          architecture: x64  # Windows 平台正确架构标识
 
       - name: 安装编译依赖
         run: |
@@ -41,9 +41,11 @@ jobs:
           echo "C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8
           python -m pip install --upgrade pip setuptools wheel cython
 
-      - name: 编译扩展模块（示例，需替换为真实命令）
+      - name: 编译扩展模块（需替换为真实命令）
         run: |
           mkdir -p build/app/helper
+          # 示例：若项目用 setup.py 构建
+          # python setup.py build_ext --inplace --compiler=mingw32
           echo "模拟编译产物: ${{ env.ARTIFACT_NAME }}" > build/app/helper/${{ env.ARTIFACT_NAME }}
 
       - name: 验证产物
